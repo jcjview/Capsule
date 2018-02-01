@@ -36,12 +36,13 @@ def get_model(embedding_matrix):
     embed_layer = Embedding(MAX_FEATURES,
                             embedding_dims,
                             input_length=MAX_TEXT_LENGTH,
-                            # weights=[embedding_matrix],
+                            weights=[embedding_matrix],
                             trainable=False)(input1)
     x = Bidirectional(GRU(gru_len, activation='relu', return_sequences=True))(embed_layer)
     capsule = Capsule(num_capsule=Num_capsule, dim_capsule=Dim_capsule, routings=Routings,
                       share_weights=True)(x)
     # output_capsule = Lambda(lambda x: K.sqrt(K.sum(K.square(x), 2)))(capsule)
+    capsule=Flatten()(capsule)
     output = Dense(6, activation='sigmoid')(capsule)
     model = Model(inputs=input1, outputs=output)
     model.compile(
@@ -49,6 +50,7 @@ def get_model(embedding_matrix):
         optimizer='adam',
         metrics=['accuracy'])
     model.summary()
+    return model
 
 embedding_matrix1 = np.load(embedding_matrix_path)
 

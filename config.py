@@ -16,7 +16,7 @@ TRAIN_VALID_FILE=path+'train_valid_test.csv'
 
 GLOVE_EMBEDDING_FILE=path+'glove.840B.300d.txt'
 
-embedding_path=path+'crawl-300d-2M.vec.txt'
+embedding_path=path+'crawl-300d-2M.vec'
 
 stop_words = {'the', 'a', 'an'}
 stop_words.update(

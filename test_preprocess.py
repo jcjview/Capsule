@@ -9,7 +9,7 @@ if __name__ == '__main__':
     train = pd.read_csv(TRAIN_DATA_FILE)
     test = pd.read_csv(TEST_DATA_FILE)
     X_train, X_test, word_index = preprocessing.get_X_train_X_test(train, test)
-    embedding_matrix = preprocessing.get_embedding_matrix(word_index,GLOVE_EMBEDDING_FILE)
+    embedding_matrix = preprocessing.get_embedding_matrix(word_index,embedding_path)
     np.save(embedding_matrix_path, embedding_matrix)
     y = get_Y(train)
 

@@ -14,12 +14,12 @@ from tqdm import tqdm
 import mmap
 
 def get_num_lines(file_path):
-    fp = open(file_path, "r+")
-    buf = mmap.mmap(fp.fileno(), 0)
-    lines = 0
-    while buf.readline():
-        lines += 1
-    return lines
+    with open(file_path, "r+") as fp:
+        buf = mmap.mmap(fp.fileno(), 0)
+        lines = 0
+        while buf.readline():
+            lines += 1
+        return lines
 
 TRAIN_HDF5 = './train_hdf5.h5'
 word_index_path='./word_index.pkl'
