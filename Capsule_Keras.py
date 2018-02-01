@@ -5,18 +5,22 @@ from keras.engine.topology import Layer
 from keras.layers import Activation
 
 def squash(x, axis=-1):
-    s_squared_norm = K.sum(K.square(x), axis, keepdims=True) + K.epsilon()
-    scale = K.sqrt(s_squared_norm)/ (0.5 + s_squared_norm)
-    return scale * x
-
+    # s_squared_norm is really small
+    # s_squared_norm = K.sum(K.square(x), axis, keepdims=True) + K.epsilon()
+    # scale = K.sqrt(s_squared_norm)/ (0.5 + s_squared_norm)
+    # return scale * x
+    s_squared_norm = K.sum(K.square(x), axis, keepdims=True)
+    scale = K.sqrt(s_squared_norm+ K.epsilon())
+    return x/scale
 
 #A Capsule Implement with Pure Keras
 class Capsule(Layer):
-    def __init__(self, num_capsule, dim_capsule, routings=3, share_weights=True, activation='default', **kwargs):
+    def __init__(self, num_capsule, dim_capsule, routings=3,kernel_size=(9,1), share_weights=True, activation='default', **kwargs):
         super(Capsule, self).__init__(**kwargs)
         self.num_capsule = num_capsule
         self.dim_capsule = dim_capsule
         self.routings = routings
+        self.kernel_size=kernel_size
         self.share_weights = share_weights
         if activation == 'default':
             self.activation = squash
@@ -30,6 +34,7 @@ class Capsule(Layer):
             self.W = self.add_weight(name='capsule_kernel',
                                      shape=(1, input_dim_capsule,
                                             self.num_capsule * self.dim_capsule),
+                                     # shape=self.kernel_size,
                                      initializer='glorot_uniform',
                                      trainable=True)
         else:

@@ -2,104 +2,63 @@
 
 from keras import backend as K
 from keras import utils
+from keras.callbacks import EarlyStopping, ModelCheckpoint
 from keras.datasets import mnist
 from keras.layers import *
 from keras.models import Model
 
 from Capsule_Keras import *
+from config import *
 
 # 准备训练数据
+from test_preprocess import embedding_matrix_path
+from util import preprocessing
+
 batch_size = 128
-num_classes = 10
-img_rows, img_cols = 28, 28
 
-(x_train, y_train), (x_test, y_test) = mnist.load_data()
-x_train = x_train.reshape(x_train.shape[0], img_rows, img_cols, 1)
-x_test = x_test.reshape(x_test.shape[0], img_rows, img_cols, 1)
+data, X_test, y, word_index = preprocessing.load_train_test_y()
+x_train = data[:-SPLIT]
+y_train = y[:-SPLIT]
+print(x_train.shape, y_train.shape)
 
-x_train = x_train.astype('float32')
-x_test = x_test.astype('float32')
-x_train /= 255
-x_test /= 255
-y_train = utils.to_categorical(y_train, num_classes)
-y_test = utils.to_categorical(y_test, num_classes)
+x_test = data[-SPLIT:]
+y_test = y[-SPLIT:]
+print(x_test.shape, y_test.shape)
 
-# 准备自定义的测试样本
-# 对测试集重新排序并拼接到原来测试集，就构成了新的测试集，每张图片有两个不同数字
-idx = np.random.permutation(len(x_test))
-# np.random.shuffle(idx)
-X_test = np.concatenate([x_test, x_test[idx]], 1)
-Y_test = np.vstack([y_test.argmax(1), y_test[idx].argmax(1)]).T
-X_test = X_test[Y_test[:, 0] != Y_test[:, 1]]  # 确保两个数字不一样
-Y_test = Y_test[Y_test[:, 0] != Y_test[:, 1]]
-Y_test.sort(axis=1)  # 排一下序，因为只比较集合，不比较顺序
+gru_len = 128
+Routings = 5
+Num_capsule = 10
+Dim_capsule = 16
 
-# 搭建普通CNN分类模型
-input_image = Input(shape=(None, None, 1))
-cnn = Conv2D(64, (3, 3), activation='relu')(input_image)
-cnn = Conv2D(64, (3, 3), activation='relu')(cnn)
-cnn = AveragePooling2D((2, 2))(cnn)
-cnn = Conv2D(128, (3, 3), activation='relu')(cnn)
-cnn = Conv2D(128, (3, 3), activation='relu')(cnn)
-cnn = GlobalAveragePooling2D()(cnn)
-dense = Dense(128, activation='relu')(cnn)
-output = Dense(10, activation='sigmoid')(dense)
 
-model = Model(inputs=input_image, outputs=output)
-model.compile(
-    loss=lambda y_true, y_pred: y_true * K.relu(0.9 - y_pred) ** 2 + 0.25 * (1 - y_true) * K.relu(y_pred - 0.1) ** 2,
-    optimizer='adam',
-    metrics=['accuracy'])
+def get_model(embedding_matrix):
+    input1 = Input(shape=(MAX_TEXT_LENGTH,))
+    embed_layer = Embedding(MAX_FEATURES,
+                            embedding_dims,
+                            input_length=MAX_TEXT_LENGTH,
+                            # weights=[embedding_matrix],
+                            trainable=False)(input1)
+    x = Bidirectional(GRU(gru_len, activation='relu', return_sequences=True))(embed_layer)
+    capsule = Capsule(num_capsule=Num_capsule, dim_capsule=Dim_capsule, routings=Routings,
+                      share_weights=True)(x)
+    # output_capsule = Lambda(lambda x: K.sqrt(K.sum(K.square(x), 2)))(capsule)
+    output = Dense(6, activation='sigmoid')(capsule)
+    model = Model(inputs=input1, outputs=output)
+    model.compile(
+        loss='binary_crossentropy',
+        optimizer='adam',
+        metrics=['accuracy'])
+    model.summary()
 
-model.summary()
+embedding_matrix1 = np.load(embedding_matrix_path)
 
-model.fit(x_train, y_train,
-          batch_size=batch_size,
-          epochs=20,
-          verbose=1,
-          validation_data=(x_test, y_test))
-
-Y_pred = model.predict(X_test)  # 用模型进行预测
-greater = np.sort(Y_pred, axis=1)[:, -2] > 0.5  # 判断预测结果是否大于0.5
-Y_pred = Y_pred.argsort()[:, -2:]  # 取最高分数的两个类别
-Y_pred.sort(axis=1)  # 排序，因为只比较集合
-
-acc = 1. * (np.prod(Y_pred == Y_test, axis=1)).sum() / len(X_test)
-print(u'CNN+Pooling，不考虑置信度的准确率为：%s' % acc)
-acc = 1. * (np.prod(Y_pred == Y_test, axis=1) * greater).sum() / len(X_test)
-print(u'CNN+Pooling，考虑置信度的准确率为：%s' % acc)
-
-# 搭建CNN+Capsule分类模型
-input_image = Input(shape=(None, None, 1))
-cnn = Conv2D(64, (3, 3), activation='relu')(input_image)
-cnn = Conv2D(64, (3, 3), activation='relu')(cnn)
-cnn = AveragePooling2D((2, 2))(cnn)
-cnn = Conv2D(128, (3, 3), activation='relu')(cnn)
-cnn = Conv2D(128, (3, 3), activation='relu')(cnn)
-cnn = Reshape((-1, 128))(cnn)
-capsule = Capsule(10, 16, 3, True)(cnn)
-output = Lambda(lambda x: K.sqrt(K.sum(K.square(x), 2)))(capsule)
-
-model = Model(inputs=input_image, outputs=output)
-model.compile(
-    loss=lambda y_true, y_pred: y_true * K.relu(0.9 - y_pred) ** 2 + 0.25 * (1 - y_true) * K.relu(y_pred - 0.1) ** 2,
-    optimizer='adam',
-    metrics=['accuracy'])
-
-model.summary()
-
+model=get_model(embedding_matrix1)
+bst_model_path = 'capsule' + '.h5'
+early_stopping = EarlyStopping(monitor='val_loss', patience=5)
+model_checkpoint = ModelCheckpoint(bst_model_path, save_best_only=True,verbose=1,  save_weights_only=True)
 model.fit(x_train, y_train,
           batch_size=batch_size,
           epochs=10,
           verbose=1,
-          validation_data=(x_test, y_test))
-
-Y_pred = model.predict(X_test)  # 用模型进行预测
-greater = np.sort(Y_pred, axis=1)[:, -2] > 0.5  # 判断预测结果是否大于0.5
-Y_pred = Y_pred.argsort()[:, -2:]  # 取最高分数的两个类别
-Y_pred.sort(axis=1)  # 排序，因为只比较集合
-
-acc = 1. * (np.prod(Y_pred == Y_test, axis=1)).sum() / len(X_test)
-print(u"CNN+Capsule，不考虑置信度的准确率为：%s" % acc)
-acc = 1. * (np.prod(Y_pred == Y_test, axis=1) * greater).sum() / len(X_test)
-print(u"CNN+Capsule，考虑置信度的准确率为：%s" % acc)
+          validation_data=(x_test, y_test),
+          callbacks=[early_stopping, model_checkpoint])
